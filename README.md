@@ -4,6 +4,6 @@ This solution allows a mono-repository, which is composed of multiple services, 
 
 ![](doc/architecture.png) 
 
-## How to run
+
 First you create S3 bucket for store code lambda, after that you upload lambda.zip to bucket.    
 Store the templates in anothe bucket for deploy cloudformation.   

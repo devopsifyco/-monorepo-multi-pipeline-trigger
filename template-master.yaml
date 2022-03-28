@@ -33,9 +33,15 @@ Parameters:
 
   Templates:
     Type: String
+    Default: template-demo-lambda-trigger
     Description: Bucket stores the cloudformation template for system deployment.
 
 Resources:
+
+  S3:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${Templates}/deploy-s3.yaml
 
   CICD:
     Type: AWS::CloudFormation::Stack
@@ -58,8 +64,3 @@ Resources:
         MonoRepoName: !Ref MonoRepoName
         LambdaZipS3Bucket: !Ref LambdaZipS3Bucket
         LambdaZipS3Key: !Ref LambdaZipS3Key
-
-  S3:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: !Sub https://s3.amazonaws.com/${Templates}/deploy-s3.yaml
