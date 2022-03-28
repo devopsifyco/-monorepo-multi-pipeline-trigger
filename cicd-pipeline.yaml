@@ -1,0 +1,336 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: CI/CD Pipeline
+
+Parameters:
+  MonoRepoName:
+    Type: String
+    Default: mono_research
+  MonoRepoBranch:
+    Type: String
+    Default: main
+  BuildCompute:
+    Type: String
+    Default: BUILD_GENERAL1_SMALL
+  AntifactStoreSevice1:
+    Type: String
+    Default: antifact-service-1
+  AntifactStoreSevice2:
+    Type: String
+    Default: antifact-service-2
+
+
+Outputs:
+  CodepipelineService1:
+    Value: !Ref CodepipelineService1
+  CodepipelineService2:
+    Value: !Ref CodepipelineService2
+
+
+Resources:
+
+  # Create bucket antifact for build
+  Service1ArtifactStorage:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    Properties:
+      BucketName: artifact-stored-service1
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  Service2ArtifactStorage:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    Properties:
+      BucketName: artifact-stored-service2
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # Create codebuild service
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: codebuild-role-fe
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codebuild.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+      - PolicyName: code-build-policy
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: "arn:aws:logs:*:*:*"
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:GetObjectVersion
+                - s3:PutObject
+                - s3:GetBucketAcl
+                - s3:GetBucketLocation
+              Resource:
+                - !Sub arn:aws:s3:::${Service1ArtifactStorage}
+                - !Sub arn:aws:s3:::${Service1ArtifactStorage}/*
+                - !Sub arn:aws:s3:::${Service2ArtifactStorage}
+                - !Sub arn:aws:s3:::${Service2ArtifactStorage}/*
+            - Effect: Allow
+              Action:
+                - codecommit:ListBranches
+                - codecommit:ListRepositories
+                - codecommit:Get*
+                - codecommit:GitPull
+              Resource: !Sub arn:aws:codecommit:${AWS::Region}:${AWS::AccountId}:${MonoRepoName}
+
+  # CodePipeline service role
+  CodePipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: codepipeline-role-fe
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - 
+            Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: codepipeline-policy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement: 
+              - 
+                Effect: Allow
+                Action:
+                  - s3:List*
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketVersioning
+                  - s3:PutObject
+                Resource:
+                - !Sub arn:aws:s3:::${Service1ArtifactStorage}
+                - !Sub arn:aws:s3:::${Service1ArtifactStorage}/*
+                - !Sub arn:aws:s3:::${Service2ArtifactStorage}
+                - !Sub arn:aws:s3:::${Service2ArtifactStorage}/*
+                - !Sub arn:aws:s3:::${AntifactStoreSevice1}/*
+                - !Sub arn:aws:s3:::${AntifactStoreSevice2}/*
+              -
+                Effect: Allow
+                Action:
+                  - codecommit:ListBranches
+                  - codecommit:ListRepositories
+                  - codecommit:Get*
+                  - codecommit:GitPull
+                  - codecommit:UploadArchive
+                Resource:
+                  - !Sub arn:aws:codecommit:${AWS::Region}:${AWS::AccountId}:${MonoRepoName}
+              -
+                Effect: Allow
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                Resource:
+                  - !GetAtt Service1CodeBuildProject.Arn
+                  - !GetAtt Service2CodeBuildProject.Arn
+              -
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:GetLogEvents
+                  - logs:PutLogEvents
+                  - logs:DescribeLogStreams
+                  - logs:PutRetentionPolicy
+                Resource:
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/*
+
+  # Create Codebuild
+  Service1CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: code-build-service1
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: !Ref BuildCompute
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:2.0
+        EnvironmentVariables:
+          - Name: ENV
+            Type: PLAINTEXT
+            Value: !Ref MonoRepoBranch
+
+      Source:
+        Location: !Sub "https://git-codecommit.${AWS::Region}.amazonaws.com/v1/repos/${MonoRepoName}"
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: '0.2'
+          phases:
+            build:
+              commands:
+              - echo build service_1 ...
+          artifacts:
+            base-directory: service_1
+            files:
+            - "**/*"
+              
+      TimeoutInMinutes: 60
+
+  Service2CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: code-build-service2
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: !Ref BuildCompute
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:2.0
+        EnvironmentVariables:
+          - Name: ENV
+            Type: PLAINTEXT
+            Value: !Ref MonoRepoBranch
+
+      Source:
+        Location: !Sub "https://git-codecommit.${AWS::Region}.amazonaws.com/v1/repos/${MonoRepoName}"
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: '0.2'
+          phases:
+            build:
+              commands:
+              - echo build service_2 ...
+          artifacts:
+            base-directory: service_2
+            files:
+            - "**/*"
+              
+      TimeoutInMinutes: 60
+
+  # Create Codepipeline
+  CodepipelineService1:
+    Type: 'AWS::CodePipeline::Pipeline'
+    Properties:
+      Name: codepipeline-service_1
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      ArtifactStore:
+        Location: !Ref Service1ArtifactStorage
+        Type: S3
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: SourceAction
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: 1
+                Provider: CodeCommit
+              Configuration:
+                BranchName: !Ref MonoRepoBranch
+                RepositoryName: !Ref MonoRepoName
+                PollForSourceChanges: false
+              RunOrder: 1
+              OutputArtifacts:
+                - Name: Source
+        - Name: Build
+          Actions:
+            - Name: Build
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: '1'
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref Service1CodeBuildProject
+              RunOrder: 1
+              InputArtifacts:
+                - Name: Source
+              OutputArtifacts:
+                - Name: public
+        - Name: Deploy
+          Actions:
+            - Name: PublicToS3
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: S3
+                Version: 1
+              InputArtifacts:
+                - Name: public
+              Configuration:
+                BucketName: !Ref AntifactStoreSevice1
+                Extract: true
+              RunOrder: 1
+
+  CodepipelineService2:
+    Type: 'AWS::CodePipeline::Pipeline'
+    Properties:
+      Name: codepipeline-service_2
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      ArtifactStore:
+        Location: !Ref Service2ArtifactStorage
+        Type: S3
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: SourceAction
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: 1
+                Provider: CodeCommit
+              Configuration:
+                BranchName: !Ref MonoRepoBranch
+                RepositoryName: !Ref MonoRepoName
+                PollForSourceChanges: false
+              RunOrder: 1
+              OutputArtifacts:
+                - Name: Source
+        - Name: Build
+          Actions:
+            - Name: Build
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: '1'
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref Service2CodeBuildProject
+              RunOrder: 1
+              InputArtifacts:
+                - Name: Source
+              OutputArtifacts:
+                - Name: public
+        - Name: Deploy
+          Actions:
+            - Name: PublicToS3
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: S3
+                Version: 1
+              InputArtifacts:
+                - Name: public
+              Configuration:
+                BucketName: !Ref AntifactStoreSevice2
+                Extract: true
+              RunOrder: 1
+

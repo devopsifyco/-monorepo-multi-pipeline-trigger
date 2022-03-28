@@ -1,0 +1,65 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Tohogas Cloudformation Master
+Metadata:
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+      - Label:
+          default: 'Repo Parameters'
+        Parameters:
+          - MonoRepoName
+          - MonoRepoBranch
+      - Label:
+          default: 'CICD Parameters'
+        Parameters:
+          - BuildCompute
+
+
+Parameters:
+  MonoRepoName:
+    Type: String
+    Default: mono_research
+  MonoRepoBranch:
+    Type: String
+    Default: main
+  BuildCompute:
+    Type: String
+    Default: BUILD_GENERAL1_SMALL
+  LambdaZipS3Bucket:
+    Default: 'lambda-codecommit-monorepo-build-trigger'
+    Type: String
+  LambdaZipS3Key:
+    Default: 'lambda.zip'
+    Type: String
+
+  Templates:
+    Type: String
+    Description: Bucket stores the cloudformation template for system deployment.
+
+Resources:
+
+  CICD:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${Templates}/cicd-pipeline.yaml
+      Parameters:
+        MonoRepoName: !Ref MonoRepoName
+        MonoRepoBranch: !Ref MonoRepoBranch
+        BuildCompute: !Ref BuildCompute
+        AntifactStoreSevice1: !GetAtt S3.Outputs.BucketService1
+        AntifactStoreSevice2: !GetAtt S3.Outputs.BucketService2
+
+  LambdaTrigger:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${Templates}/lambda-event-handler.yaml
+      Parameters:
+        CodepipelineService1: !GetAtt CICD.Outputs.CodepipelineService1
+        CodepipelineService2: !GetAtt CICD.Outputs.CodepipelineService2
+        MonoRepoName: !Ref MonoRepoName
+        LambdaZipS3Bucket: !Ref LambdaZipS3Bucket
+        LambdaZipS3Key: !Ref LambdaZipS3Key
+
+  S3:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${Templates}/deploy-s3.yaml
