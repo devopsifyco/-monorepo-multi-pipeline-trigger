@@ -8,12 +8,9 @@ Parameters:
     Type: String
   MonoRepoName:
     Type: String
-    Default: mono_research
   LambdaZipS3Bucket:
-    Default: 'lambda-codecommit-monorepo-build-trigger'
     Type: String
   LambdaZipS3Key:
-    Default: 'lambda.zip'
     Type: String
 
 Resources:

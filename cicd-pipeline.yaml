@@ -4,19 +4,14 @@ Description: CI/CD Pipeline
 Parameters:
   MonoRepoName:
     Type: String
-    Default: mono_research
   MonoRepoBranch:
     Type: String
-    Default: main
   BuildCompute:
     Type: String
-    Default: BUILD_GENERAL1_SMALL
   AntifactStoreSevice1:
     Type: String
-    Default: antifact-service-1
   AntifactStoreSevice2:
     Type: String
-    Default: antifact-service-2
 
 
 Outputs:
